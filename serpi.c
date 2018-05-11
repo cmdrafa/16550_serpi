@@ -4,13 +4,13 @@
 #include <linux/module.h>
 #include <linux/moduleparam.h>
 #include <linux/init.h>
-#include <linux/kernel.h> /* printk() */
-#include <linux/slab.h>   /* kmalloc() */
-#include <linux/fs.h>     /* everything... */
-#include <linux/errno.h>  /* error codes */
-#include <linux/types.h>  /* size_t */
+#include <linux/kernel.h> 
+#include <linux/slab.h>   
+#include <linux/fs.h>     
+#include <linux/errno.h>  
+#include <linux/types.h>  
 #include <linux/proc_fs.h>
-#include <linux/fcntl.h> /* O_ACCMODE */
+#include <linux/fcntl.h> 
 #include <linux/aio.h>
 #include <linux/delay.h>
 #include <linux/timer.h>
@@ -37,8 +37,8 @@ MODULE_AUTHOR("Rafael Kraemer");
 
 struct dev
 {
-    dev_t uartdevice;
-    spinlock_t lock;                    // the device
+    dev_t uartdevice;                   // the device
+    spinlock_t lock;                    // A spinlock used in the kfifo struct
     wait_queue_head_t r_queue, w_queue; // the read_queue and wait_queue decs
     struct cdev cdev;                   //cdev struct
     struct semaphore sem;               //a semaphore
