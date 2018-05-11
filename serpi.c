@@ -30,7 +30,7 @@
 #include <linux/spinlock.h>
 #include "serial_reg.h"
 
-#define FIFO_SIZE 4096
+#define FIFO_SIZE 4096 // Its the size in bytes of the fifo structure
 
 MODULE_LICENSE("Dual BSD/GPL");
 MODULE_AUTHOR("Rafael Kraemer");
@@ -38,26 +38,28 @@ MODULE_AUTHOR("Rafael Kraemer");
 struct dev
 {
     dev_t uartdevice;
-    spinlock_t lock;           // the device
-    wait_queue_head_t w_queue; // the wait_queue
-    struct cdev cdev;          //cdev struct
-    struct semaphore sem;      //a semaphore
-    char *data;                // device data
-    char *devname;             // device name
-    int cnt;                   // A count
-    int timer_state;           //
-    int irq;                   // Irq identifier
-    int wq_flag;               //Wait queue flag
+    spinlock_t lock;                    // the device
+    wait_queue_head_t r_queue, w_queue; // the read_queue and wait_queue decs
+    struct cdev cdev;                   //cdev struct
+    struct semaphore sem;               //a semaphore
+    char *data;                         // device data
+    char *devname;                      // device name
+    int cnt;                            // A count
+    int timer_state;                    // a variable for checking the timer
+    int irq;                            // Irq identifier = 4
+    int rq_flag;                        // Wait queue flag, reading
+    int wq_flag;                        // Wait queue flag, writing
 };
 
-struct dev *uartdev;
+struct dev *uartdev; // the device structure
 
-static struct timer_list read_timer;
+static struct timer_list read_timer; // the timer
 
-static struct kfifo *dev_fifo;
+static struct kfifo *dev_fifo; // The fifo structure
 
+// Prototypes
 void configure_serpi_device(void);
-irqreturn_t int_handler(int irq, void *dev_id);
+void write_work(void);
 
 int serpi_open(struct inode *inodep, struct file *filep)
 {
@@ -74,12 +76,14 @@ int serpi_open(struct inode *inodep, struct file *filep)
     return 0;
 }
 
+// Timer, not used for now
 void timer_callback(unsigned long data)
 {
     printk(KERN_ALERT "Timer callback\n");
     uartdev->timer_state = 1;
 }
 
+// close()
 int serpi_release(struct inode *inodep, struct file *filep)
 {
     int ret;
@@ -95,11 +99,8 @@ int serpi_release(struct inode *inodep, struct file *filep)
 // copy to user from kfifo, gotta figure out how to work that shit
 ssize_t serpi_read(struct file *filep, char __user *buff, size_t count, loff_t *offp)
 {
-    unsigned long cp, uncp;
-    int i = 0;
+    unsigned long cp = 0, uncp;
     int ret;
-    //unsigned char escape = 0;
-    //int data_read = 0;
 
     struct dev *uartdev = filep->private_data;
     if (down_interruptible(&uartdev->sem))
@@ -115,8 +116,8 @@ ssize_t serpi_read(struct file *filep, char __user *buff, size_t count, loff_t *
     }
     memset(uartdev->data, 0, sizeof(char) * (count + 1));
 
-    ret = wait_event_interruptible(uartdev->w_queue, uartdev->wq_flag != 0);
-    uartdev->wq_flag = 0;
+    ret = wait_event_interruptible(uartdev->r_queue, uartdev->rq_flag != 0);
+    uartdev->rq_flag = 0;
 
     if (kfifo_len(dev_fifo) != 0)
     {
@@ -133,7 +134,45 @@ ssize_t serpi_read(struct file *filep, char __user *buff, size_t count, loff_t *
 
 ssize_t serpi_write(struct file *filep, const char __user *buff, size_t count, loff_t *offp)
 {
+    unsigned long cp, uncp;
+    char b_data;
+    int data_checker;
+    int ret;
+    int i;
+    struct dev *uartdev = filep->private_data;
 
+    data_checker = 0;
+    b_data = 0;
+    i = 0;
+
+    if (down_interruptible(&uartdev->sem))
+    {
+        return -ERESTARTSYS;
+    }
+
+    // Allocate memory for the data coming from the user_space
+    uartdev->data = kmalloc(sizeof(char) * (count + 1), GFP_KERNEL);
+    if (!uartdev->data)
+    {
+        printk(KERN_ERR "Error aloccating memory for write operation!!\n");
+        return -1;
+    }
+    memset(uartdev->data, 0, sizeof(char) * (count + 1));
+    uartdev->cnt = count;
+
+    // Wait for signal from the interrupt line
+    ret = wait_event_interruptible(uartdev->w_queue, uartdev->wq_flag != 0);
+    uartdev->wq_flag = 0;
+
+    uncp = copy_from_user(uartdev->data, buff, count);
+    udelay(100);
+    cp = kfifo_put(dev_fifo, (uartdev->data), count);
+
+    outb((uartdev->data[0]), BASE + UART_TX); // Gotta write the first char here
+
+    kfree(uartdev->data);
+
+    up(&uartdev->sem);
     return count;
 }
 
@@ -146,23 +185,53 @@ struct file_operations uart_fops = {
     .release = serpi_release,
 };
 
+void write_work()
+{
+    int i;
+    int cp;
+    char buf_w[uartdev->cnt];
+
+    cp = kfifo_get(dev_fifo, buf_w, uartdev->cnt);
+    if (cp > 0)
+    {
+        for (i = 1; i < uartdev->cnt; i++) // The "0" was already written in
+        //the write routine
+        {
+            outb(buf_w[i], BASE + UART_TX);
+            udelay(100); // Small delay, necessary for clearing bits from the registers
+        }
+    }
+    printk(KERN_INFO "%d bytes written\n", uartdev->cnt); // Debug
+}
+
 /** Deal with basically two issues:
  * Transfer data to/from the UART and
  * signal any user process that may be blocked or
  * waiting for the event that caused the interrupt **/
 irqreturn_t int_handler(int irq, void *dev_id)
 {
-    unsigned char buf, ret;
+    unsigned char buf;
 
-    if ((inb(BASE + UART_IIR) & UART_IIR_RDI) != 0)
+    /** Gotta figure a better way to look for interrupts
+     * This one looks ugly
+     * */
+
+    //Write interrupt
+    if ((inb(BASE + UART_IIR) & UART_IIR_THRI) != 0)
     {
-        buf = inb(BASE + UART_RX);
-        //ret = mod_timer(&read_timer, jiffies + msecs_to_jiffies(2000));
-        kfifo_put(dev_fifo, &buf, sizeof(unsigned char));
+        write_work(); // Routine for writing data
         uartdev->wq_flag = 1;
         wake_up_interruptible(&uartdev->w_queue);
     }
-    uartdev->timer_state = 0;
+
+    //Read interrupt
+    if ((inb(BASE + UART_IIR) & UART_IIR_RDI) != 0)
+    {
+        buf = inb(BASE + UART_RX);
+        kfifo_put(dev_fifo, &buf, sizeof(unsigned char));
+        uartdev->rq_flag = 1;
+        wake_up_interruptible(&uartdev->r_queue);
+    }
 
     return IRQ_HANDLED;
 }
@@ -171,6 +240,7 @@ static int serpi_init(void)
 {
     int ret, Major, Minor, reg, req;
 
+    // Allocate structure for the device
     uartdev = kmalloc(sizeof(struct dev), GFP_KERNEL);
     if (!uartdev)
     {
@@ -178,13 +248,18 @@ static int serpi_init(void)
         return -1;
     }
     memset(uartdev, 0, sizeof(struct dev));
-    spin_lock_init(&uartdev->lock);
-
-    dev_fifo = kfifo_alloc(FIFO_SIZE, GFP_KERNEL, &uartdev->lock);
-
-    init_waitqueue_head(&uartdev->w_queue);
     uartdev->devname = "serpi";
     uartdev->irq = 4;
+
+    // Init the spin lock, necessary for the kfifo
+    spin_lock_init(&uartdev->lock);
+
+    //Allocate the kfifo structure
+    dev_fifo = kfifo_alloc(FIFO_SIZE, GFP_KERNEL, &uartdev->lock);
+
+    // Init queues and mutex
+    init_waitqueue_head(&uartdev->r_queue); // the read queue
+    init_waitqueue_head(&uartdev->w_queue); // The write queue
     init_MUTEX(&uartdev->sem);
 
     if (!request_region(BASE, 8, uartdev->devname))
@@ -210,12 +285,12 @@ static int serpi_init(void)
     cdev_init(&uartdev->cdev, &uart_fops);
     uartdev->cdev.owner = THIS_MODULE;
     uartdev->cdev.ops = &uart_fops;
-
     reg = cdev_add(&uartdev->cdev, uartdev->uartdevice, 1);
     if (reg < 0)
     {
         printk(KERN_ERR "Error in cdev_add\n");
     }
+
     // Request IRQ line
     req = request_irq(uartdev->irq, int_handler, SA_INTERRUPT,
                       uartdev->devname, &uartdev);
@@ -225,8 +300,9 @@ static int serpi_init(void)
         return req;
     }
 
-    setup_timer(&read_timer, timer_callback, 0);
-    uartdev->timer_state = 0;
+    // Setup the timer
+    setup_timer(&read_timer, timer_callback, 0); // Not used for now
+    uartdev->timer_state = 0;                    // Not used for now
 
     return 0;
 }
@@ -234,9 +310,8 @@ static int serpi_init(void)
 void configure_serpi_device()
 {
     unsigned char lcr = 0;
-    lcr = UART_IER_RDI;         // Enable receiver interrupt
-    outb(lcr, BASE + UART_IER); // write to it
-    lcr = 0;
+    lcr = UART_IER_RDI | UART_IER_THRI;                   // Enable receiver interrupt
+    outb(lcr, BASE + UART_IER);                           // write to it
     lcr = UART_LCR_WLEN8 | UART_LCR_EPAR | UART_LCR_STOP; //Set len to 8, Even parity and 2 stop bits
     outb(lcr, BASE + UART_LCR);                           // write to it
     lcr |= UART_LCR_DLAB;                                 // Select d_dlab
