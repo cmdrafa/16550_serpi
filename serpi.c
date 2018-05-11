@@ -227,8 +227,12 @@ irqreturn_t int_handler(int irq, void *dev_id)
     //Read interrupt
     if ((inb(BASE + UART_IIR) & UART_IIR_RDI) != 0)
     {
+        // Read data from the register and put it in the buffer
+        // Its is done this way because the register is active while
+        // there is still data to be written (reading one char a time)
         buf = inb(BASE + UART_RX);
         kfifo_put(dev_fifo, &buf, sizeof(unsigned char));
+
         uartdev->rq_flag = 1;
         wake_up_interruptible(&uartdev->r_queue);
     }
