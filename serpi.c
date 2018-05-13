@@ -4,13 +4,13 @@
 #include <linux/module.h>
 #include <linux/moduleparam.h>
 #include <linux/init.h>
-#include <linux/kernel.h> 
-#include <linux/slab.h>   
-#include <linux/fs.h>     
-#include <linux/errno.h>  
-#include <linux/types.h>  
+#include <linux/kernel.h>
+#include <linux/slab.h>
+#include <linux/fs.h>
+#include <linux/errno.h>
+#include <linux/types.h>
 #include <linux/proc_fs.h>
-#include <linux/fcntl.h> 
+#include <linux/fcntl.h>
 #include <linux/aio.h>
 #include <linux/delay.h>
 #include <linux/timer.h>
@@ -30,7 +30,7 @@
 #include <linux/spinlock.h>
 #include "serial_reg.h"
 
-#define FIFO_SIZE 4096 // Its the size in bytes of the fifo structure
+#define FIFO_SIZE 4096 // The size in bytes of the fifo structure
 
 MODULE_LICENSE("Dual BSD/GPL");
 MODULE_AUTHOR("Rafael Kraemer");
@@ -39,7 +39,7 @@ struct dev
 {
     dev_t uartdevice;                   // the device
     spinlock_t lock;                    // A spinlock used in the kfifo struct
-    wait_queue_head_t r_queue, w_queue; // the read_queue and wait_queue decs
+    wait_queue_head_t r_queue, w_queue; // the read_queue and write_queue decs
     struct cdev cdev;                   //cdev struct
     struct semaphore sem;               //a semaphore
     char *data;                         // device data
@@ -49,6 +49,9 @@ struct dev
     int irq;                            // Irq identifier = 4
     int rq_flag;                        // Wait queue flag, reading
     int wq_flag;                        // Wait queue flag, writing
+    atomic_t serpi_available;           // Flag for checking device availability
+    int serpi_owner;                    // Access control var
+    int serpi_count;                    // Access control var
 };
 
 struct dev *uartdev; // the device structure
@@ -61,15 +64,41 @@ static struct kfifo *dev_fifo; // The fifo structure
 void configure_serpi_device(void);
 void write_work(void);
 
+/*int (*ioctl)(struct inode *inode, struct file *filep, unsigned int cmd, unsigned long arg)
+{
+}*/
+
 int serpi_open(struct inode *inodep, struct file *filep)
 {
     int ret;
-    struct dev *uartdev;
+    struct dev *uartdev = container_of(inodep->i_cdev, struct dev, cdev);
 
-    uartdev = container_of(inodep->i_cdev, struct dev, cdev);
+    // Check is device is available, SINGLE OPEN OPERATION
+    /*if (!atomic_dec_and_test(&uartdev->serpi_available))
+    {
+        atomic_inc(&uartdev->serpi_available);
+        return -EBUSY; //already open
+    }*/
     filep->private_data = uartdev;
-
     ret = nonseekable_open(inodep, filep);
+
+    // Check if the user is the current owner
+    spin_lock(&uartdev->lock);
+    if (uartdev->serpi_count &&
+        (uartdev->serpi_owner != current->uid) &&
+        (uartdev->serpi_owner != current->euid) &&
+        !capable(CAP_DAC_OVERRIDE))
+    {
+        spin_unlock(&uartdev->lock);
+        return -EBUSY;
+    }
+
+    if (uartdev->serpi_count == 0)
+    {
+        uartdev->serpi_owner == current->uid;
+    }
+    uartdev->serpi_count++;
+    spin_unlock(&uartdev->lock);
 
     printk(KERN_INFO "Device has been opened\n");
 
@@ -90,13 +119,19 @@ int serpi_release(struct inode *inodep, struct file *filep)
 
     ret = del_timer(&read_timer);
 
+    // atomic_inc(&uartdev->serpi_available); // Single open operation
+
+    spin_lock(&uartdev->lock);
+    uartdev->serpi_count--;
+    spin_unlock(&uartdev->lock);
+
     printk(KERN_INFO "Device has been sucessfully closed\n");
 
     return 0;
 }
 
 // Wait for signal from int_handler that there is data to read
-// copy to user from kfifo, gotta figure out how to work that shit
+// copy to user from kfifo
 ssize_t serpi_read(struct file *filep, char __user *buff, size_t count, loff_t *offp)
 {
     unsigned long cp = 0, uncp;
@@ -108,6 +143,7 @@ ssize_t serpi_read(struct file *filep, char __user *buff, size_t count, loff_t *
         return -ERESTARTSYS;
     }
 
+    // Allocate memory for the reading data
     uartdev->data = kmalloc(sizeof(char) * (count + 1), GFP_KERNEL);
     if (!uartdev->data)
     {
@@ -116,9 +152,11 @@ ssize_t serpi_read(struct file *filep, char __user *buff, size_t count, loff_t *
     }
     memset(uartdev->data, 0, sizeof(char) * (count + 1));
 
+    // Wait for signal from the int_handler
     ret = wait_event_interruptible(uartdev->r_queue, uartdev->rq_flag != 0);
     uartdev->rq_flag = 0;
 
+    // Get data from the kfifo buffer
     if (kfifo_len(dev_fifo) != 0)
     {
         msleep_interruptible(3);
@@ -185,6 +223,7 @@ struct file_operations uart_fops = {
     .release = serpi_release,
 };
 
+// The actual write work, called from the interrupt handler
 void write_work()
 {
     int i;
@@ -201,6 +240,7 @@ void write_work()
             udelay(100); // Small delay, necessary for clearing bits from the registers
         }
     }
+
     printk(KERN_INFO "%d bytes written\n", uartdev->cnt); // Debug
 }
 
@@ -261,10 +301,11 @@ static int serpi_init(void)
     //Allocate the kfifo structure
     dev_fifo = kfifo_alloc(FIFO_SIZE, GFP_KERNEL, &uartdev->lock);
 
-    // Init queues and mutex
+    // Init routines, queues, mutex, etc
+    //atomic_set(&uartdev->serpi_available, 1);
     init_waitqueue_head(&uartdev->r_queue); // the read queue
     init_waitqueue_head(&uartdev->w_queue); // The write queue
-    init_MUTEX(&uartdev->sem);
+    init_MUTEX(&uartdev->sem);              // The sempaphore
 
     if (!request_region(BASE, 8, uartdev->devname))
     {
@@ -314,16 +355,21 @@ static int serpi_init(void)
 void configure_serpi_device()
 {
     unsigned char lcr = 0;
-    lcr = UART_IER_RDI | UART_IER_THRI;                   // Enable receiver interrupt
-    outb(lcr, BASE + UART_IER);                           // write to it
+
+    lcr = UART_IER_RDI | UART_IER_THRI; // Enable receiver interrupt and
+                                        //Transmitter holding register interrupt
+    outb(lcr, BASE + UART_IER);         // write to it
+
     lcr = UART_LCR_WLEN8 | UART_LCR_EPAR | UART_LCR_STOP; //Set len to 8, Even parity and 2 stop bits
     outb(lcr, BASE + UART_LCR);                           // write to it
-    lcr |= UART_LCR_DLAB;                                 // Select d_dlab
-    outb(lcr, BASE + UART_LCR);                           // Acess dlab
-    outb(UART_DIV_1200, BASE + UART_DLL);                 // 1200bps least significant bits
-    outb(0, BASE + UART_DLM);                             // 1200bps most significant bits
-    lcr &= ~UART_LCR_DLAB;                                // reset DLAB
-    outb(lcr, BASE + UART_LCR);                           // write to it
+
+    lcr |= UART_LCR_DLAB;                 // Select d_dlab
+    outb(lcr, BASE + UART_LCR);           // Acess dlab
+    outb(UART_DIV_1200, BASE + UART_DLL); // 1200bps least significant bits
+    outb(0, BASE + UART_DLM);             // 1200bps most significant bits
+
+    lcr &= ~UART_LCR_DLAB;      // reset DLAB
+    outb(lcr, BASE + UART_LCR); // write to it
 }
 
 static void serpi_exit(void)
