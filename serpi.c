@@ -28,7 +28,10 @@
 #include <linux/wait.h>
 #include <asm/semaphore.h>
 #include <linux/spinlock.h>
+#include <linux/ioctl.h>
+
 #include "serial_reg.h"
+#include "serpi.h"
 
 #define FIFO_SIZE 4096 // The size in bytes of the fifo structure
 
@@ -52,21 +55,105 @@ struct dev
     atomic_t serpi_available;           // Flag for checking device availability
     int serpi_owner;                    // Access control var
     int serpi_count;                    // Access control var
+    struct kfifo *dev_fifo;             // The fifo structure
 };
 
 struct dev *uartdev; // the device structure
+struct ioctl_serpi *ioctl_serpi;
 
 static struct timer_list read_timer; // the timer
-
-static struct kfifo *dev_fifo; // The fifo structure
 
 // Prototypes
 void configure_serpi_device(void);
 void write_work(void);
 
-/*int (*ioctl)(struct inode *inode, struct file *filep, unsigned int cmd, unsigned long arg)
+/**
+ * set/get the values of the communication parameters, i.e. the bitrate, 
+ * the char width, the parity and the number of bits.
+ * implement a single "set" command that allows to modify all the parameters. 
+ * Furthermore, you should provide a "get" command that allows to read the current value of all the 
+ * serial communication parameters.**/
+int serpi_ioctl(struct inode *inode, struct file *filep, unsigned int cmd, unsigned long arg)
 {
-}*/
+
+    char lcr_w, lcr_par, lcr_stop, lcr_br, lcr;
+    // Check for access to user_space args;
+    if (!access_ok(VERIFY_WRITE, (void __user *)arg, _IOC_SIZE(cmd)))
+    {
+        return -EFAULT;
+    }
+
+    ioctl_serpi = kmalloc(sizeof(struct ioctl_serpi), GFP_KERNEL);
+    memset(ioctl_serpi, 0, sizeof(struct ioctl_serpi));
+
+    ioctl_serpi = (struct ioctl_serpi *)arg;
+
+    switch (cmd)
+    {
+    // Set commands
+    case SERPI_IOCSALL:
+
+        switch (ioctl_serpi->wlen)
+        {
+        case 1:
+            lcr_w = UART_LCR_WLEN8;
+            break;
+        case 2:
+            lcr_w = UART_LCR_WLEN7;
+            break;
+        case 3:
+            lcr_w = UART_LCR_WLEN6;
+            break;
+        case 4:
+            lcr_w = UART_LCR_WLEN5;
+            break;
+        default:
+            lcr_w = UART_LCR_WLEN8;
+        }
+        switch (ioctl_serpi->par)
+        {
+        case 1:
+            lcr_par = UART_LCR_SPAR;
+            break;
+        case 2:
+            lcr_par = UART_LCR_EPAR;
+            break;
+        default:
+            lcr_par = UART_LCR_EPAR;
+            break;
+        }
+        lcr = lcr_w | lcr_par | UART_LCR_STOP;
+        outb(lcr, BASE + UART_LCR);
+
+        switch (ioctl_serpi->br)
+        {
+        case 1:
+            lcr_br = UART_DIV_9600;
+            break;
+        case 2:
+            lcr_br = UART_DIV_1200;
+            break;
+        }
+        lcr |= UART_LCR_DLAB;
+        outb(lcr, BASE + UART_LCR);
+        outb(lcr_br, BASE + UART_DLL);
+        outb(0, BASE + UART_DLM);
+        lcr &= ~UART_LCR_DLAB;
+        outb(lcr, BASE + UART_LCR);
+        break;
+
+    // Get commands
+    case SERPI_IOCGALL:
+        break;
+
+    default:
+
+        configure_serpi_device();
+        return -ENOTTY;
+    }
+
+    return 0;
+}
 
 int serpi_open(struct inode *inodep, struct file *filep)
 {
@@ -157,10 +244,10 @@ ssize_t serpi_read(struct file *filep, char __user *buff, size_t count, loff_t *
     uartdev->rq_flag = 0;
 
     // Get data from the kfifo buffer
-    if (kfifo_len(dev_fifo) != 0)
+    if (kfifo_len(uartdev->dev_fifo) != 0)
     {
         msleep_interruptible(3);
-        cp = kfifo_get(dev_fifo, (uartdev->data), count);
+        cp = kfifo_get(uartdev->dev_fifo, (uartdev->data), count);
     }
 
     uncp = copy_to_user(buff, uartdev->data, count);
@@ -204,7 +291,7 @@ ssize_t serpi_write(struct file *filep, const char __user *buff, size_t count, l
 
     uncp = copy_from_user(uartdev->data, buff, count);
     udelay(100);
-    cp = kfifo_put(dev_fifo, (uartdev->data), count);
+    cp = kfifo_put(uartdev->dev_fifo, (uartdev->data), count);
 
     outb((uartdev->data[0]), BASE + UART_TX); // Gotta write the first char here
 
@@ -220,6 +307,7 @@ struct file_operations uart_fops = {
     .open = serpi_open,
     .read = serpi_read,
     .write = serpi_write,
+    .ioctl = serpi_ioctl,
     .release = serpi_release,
 };
 
@@ -230,7 +318,8 @@ void write_work()
     int cp;
     char buf_w[uartdev->cnt];
 
-    cp = kfifo_get(dev_fifo, buf_w, uartdev->cnt);
+    // Blocking until all data from the fifo is passed to the UART_TX
+    cp = kfifo_get(uartdev->dev_fifo, buf_w, uartdev->cnt);
     if (cp > 0)
     {
         for (i = 1; i < uartdev->cnt; i++) // The "0" was already written in
@@ -271,7 +360,7 @@ irqreturn_t int_handler(int irq, void *dev_id)
         // Its is done this way because the register is active while
         // there is still data to be written (reading one char a time)
         buf = inb(BASE + UART_RX);
-        kfifo_put(dev_fifo, &buf, sizeof(unsigned char));
+        kfifo_put(uartdev->dev_fifo, &buf, sizeof(unsigned char));
 
         uartdev->rq_flag = 1;
         wake_up_interruptible(&uartdev->r_queue);
@@ -299,7 +388,7 @@ static int serpi_init(void)
     spin_lock_init(&uartdev->lock);
 
     //Allocate the kfifo structure
-    dev_fifo = kfifo_alloc(FIFO_SIZE, GFP_KERNEL, &uartdev->lock);
+    uartdev->dev_fifo = kfifo_alloc(FIFO_SIZE, GFP_KERNEL, &uartdev->lock);
 
     // Init routines, queues, mutex, etc
     //atomic_set(&uartdev->serpi_available, 1);
@@ -313,7 +402,7 @@ static int serpi_init(void)
         return -1;
     }
 
-    configure_serpi_device();
+    //configure_serpi_device();
 
     // Allocate Major Numbers
     ret = alloc_chrdev_region(&uartdev->uartdevice, 0, 1, uartdev->devname);
@@ -380,8 +469,9 @@ static void serpi_exit(void)
     free_irq(uartdev->irq, &uartdev);
     cdev_del(&uartdev->cdev);
     unregister_chrdev_region(uartdev->uartdevice, 1);
+    kfifo_free(uartdev->dev_fifo);
     kfree(uartdev);
-    kfifo_free(dev_fifo);
+
     release_region(BASE, 8);
 
     printk(KERN_INFO "Major number: %d unloaded\n", Major);
