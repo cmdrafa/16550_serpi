@@ -17,7 +17,7 @@ struct ioctl_serpi {
 
 #define SERPI_IOCRESET _IO(SERPI_IOC_MAGIC, 0) // reset
 
-#define SERPI_IOCSALL _IOW(SERPI_IOC_MAGIC, 1, int) // setting bitrate
+#define SERPI_IOCSALL _IOW(SERPI_IOC_MAGIC, 1, int) // setting all
 
 #define SERPI_IOCSCW _IOW(SERPI_IOC_MAGIC, 2, int) // setting char width
 
@@ -25,7 +25,7 @@ struct ioctl_serpi {
 
 #define SERPI_IOCSNB _IOW(SERPI_IOC_MAGIC, 4, int) // setting number of bits
 
-#define SERPI_IOCGALL _IOR(SERPI_IOC_MAGIC, 1, int) // getting bitrate
+#define SERPI_IOCGALL _IOR(SERPI_IOC_MAGIC, 1, int) // getting all
 
 #define SERPI_IOCGCW _IOR(SERPI_IOC_MAGIC, 2, int) // getting char width
 

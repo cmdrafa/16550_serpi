@@ -58,8 +58,8 @@ struct dev
     struct kfifo *dev_fifo;             // The fifo structure
 };
 
-struct dev *uartdev; // the device structure
-struct ioctl_serpi *ioctl_serpi;
+struct dev *uartdev;             // the device structure
+struct ioctl_serpi *ioctl_serpi; // The ioctl structure, command list
 
 static struct timer_list read_timer; // the timer
 
@@ -83,15 +83,16 @@ int serpi_ioctl(struct inode *inode, struct file *filep, unsigned int cmd, unsig
         return -EFAULT;
     }
 
-    ioctl_serpi = kmalloc(sizeof(struct ioctl_serpi), GFP_KERNEL);
-    memset(ioctl_serpi, 0, sizeof(struct ioctl_serpi));
-
-    ioctl_serpi = (struct ioctl_serpi *)arg;
-
     switch (cmd)
     {
     // Set commands
     case SERPI_IOCSALL:
+
+        ioctl_serpi = (struct ioctl_serpi *)arg;
+
+        lcr = UART_IER_RDI | UART_IER_THRI; // Enable receiver interrupt and
+
+        outb(lcr, BASE + UART_IER); //Transmitter holding register interrupt
 
         switch (ioctl_serpi->wlen)
         {
@@ -122,6 +123,7 @@ int serpi_ioctl(struct inode *inode, struct file *filep, unsigned int cmd, unsig
             lcr_par = UART_LCR_EPAR;
             break;
         }
+        //printk(KERN_INFO "doing the WLEN and STOP CONFIG\n");
         lcr = lcr_w | lcr_par | UART_LCR_STOP;
         outb(lcr, BASE + UART_LCR);
 
@@ -133,7 +135,11 @@ int serpi_ioctl(struct inode *inode, struct file *filep, unsigned int cmd, unsig
         case 2:
             lcr_br = UART_DIV_1200;
             break;
+        default:
+            lcr_br = UART_DIV_1200;
+            break;
         }
+        //printk(KERN_INFO "doing the br config\n");
         lcr |= UART_LCR_DLAB;
         outb(lcr, BASE + UART_LCR);
         outb(lcr_br, BASE + UART_DLL);
@@ -144,11 +150,14 @@ int serpi_ioctl(struct inode *inode, struct file *filep, unsigned int cmd, unsig
 
     // Get commands
     case SERPI_IOCGALL:
+        printk(KERN_INFO "Values, br: %d, wlen: %d par: %d", ioctl_serpi->br,
+               ioctl_serpi->wlen, ioctl_serpi->par);
         break;
 
     default:
+        // case invalid commands use the default values
 
-        configure_serpi_device();
+        //configure_serpi_device();
         return -ENOTTY;
     }
 
@@ -373,7 +382,7 @@ static int serpi_init(void)
 {
     int ret, Major, Minor, reg, req;
 
-    // Allocate structure for the device
+    // Allocate memory for the device struct
     uartdev = kmalloc(sizeof(struct dev), GFP_KERNEL);
     if (!uartdev)
     {
@@ -383,6 +392,10 @@ static int serpi_init(void)
     memset(uartdev, 0, sizeof(struct dev));
     uartdev->devname = "serpi";
     uartdev->irq = 4;
+
+    // Allocate for the ioctl struct
+    ioctl_serpi = kmalloc(sizeof(struct ioctl_serpi), GFP_KERNEL);
+    memset(ioctl_serpi, 0, sizeof(struct ioctl_serpi));
 
     // Init the spin lock, necessary for the kfifo
     spin_lock_init(&uartdev->lock);
@@ -469,6 +482,7 @@ static void serpi_exit(void)
     free_irq(uartdev->irq, &uartdev);
     cdev_del(&uartdev->cdev);
     unregister_chrdev_region(uartdev->uartdevice, 1);
+    kfree(ioctl_serpi);
     kfifo_free(uartdev->dev_fifo);
     kfree(uartdev);
 
