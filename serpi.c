@@ -77,6 +77,7 @@ int serpi_ioctl(struct inode *inode, struct file *filep, unsigned int cmd, unsig
 {
 
     char lcr_w, lcr_par, lcr_stop, lcr_br, lcr;
+    int ret1, ret2;
     // Check for access to user_space args;
     if (!access_ok(VERIFY_WRITE, (void __user *)arg, _IOC_SIZE(cmd)))
     {
@@ -88,11 +89,11 @@ int serpi_ioctl(struct inode *inode, struct file *filep, unsigned int cmd, unsig
     // Set commands
     case SERPI_IOCSALL:
 
-        ioctl_serpi = (struct ioctl_serpi *)arg;
+        ret1 = copy_from_user(ioctl_serpi, (struct ioctl_serpi *)arg, sizeof(struct ioctl_serpi));
 
         lcr = UART_IER_RDI | UART_IER_THRI; // Enable receiver interrupt and
-
-        outb(lcr, BASE + UART_IER); //Transmitter holding register interrupt
+                                            //Transmitter holding register interrupt
+        outb(lcr, BASE + UART_IER);
 
         switch (ioctl_serpi->wlen)
         {
@@ -111,6 +112,7 @@ int serpi_ioctl(struct inode *inode, struct file *filep, unsigned int cmd, unsig
         default:
             lcr_w = UART_LCR_WLEN8;
         }
+
         switch (ioctl_serpi->par)
         {
         case 1:
@@ -123,7 +125,7 @@ int serpi_ioctl(struct inode *inode, struct file *filep, unsigned int cmd, unsig
             lcr_par = UART_LCR_EPAR;
             break;
         }
-        //printk(KERN_INFO "doing the WLEN and STOP CONFIG\n");
+        // Write the wordlenght, the parity and the stop bits
         lcr = lcr_w | lcr_par | UART_LCR_STOP;
         outb(lcr, BASE + UART_LCR);
 
@@ -139,7 +141,7 @@ int serpi_ioctl(struct inode *inode, struct file *filep, unsigned int cmd, unsig
             lcr_br = UART_DIV_1200;
             break;
         }
-        //printk(KERN_INFO "doing the br config\n");
+        // Write the bit_rate to the serial_port, maybe a routine just for that ?
         lcr |= UART_LCR_DLAB;
         outb(lcr, BASE + UART_LCR);
         outb(lcr_br, BASE + UART_DLL);
@@ -150,8 +152,8 @@ int serpi_ioctl(struct inode *inode, struct file *filep, unsigned int cmd, unsig
 
     // Get commands
     case SERPI_IOCGALL:
-        printk(KERN_INFO "Values, br: %d, wlen: %d par: %d", ioctl_serpi->br,
-               ioctl_serpi->wlen, ioctl_serpi->par);
+        // Send the config to the user
+        ret2 = copy_to_user((struct ioctl_serpi *)arg, ioctl_serpi, sizeof(struct ioctl_serpi));
         break;
 
     default:
@@ -175,6 +177,7 @@ int serpi_open(struct inode *inodep, struct file *filep)
         atomic_inc(&uartdev->serpi_available);
         return -EBUSY; //already open
     }*/
+    
     filep->private_data = uartdev;
     ret = nonseekable_open(inodep, filep);
 
