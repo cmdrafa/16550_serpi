@@ -7,7 +7,7 @@
 #include <sys/ioctl.h>
 #include "serpi.h"
 
-#define buffersize 1024
+#define buffersize 4096
 
 int set_ioctl(int fd)
 {
@@ -37,6 +37,7 @@ int set_ioctl(int fd)
     if (io_s < 0)
     {
         perror("Setting ioctl values: ");
+        return -1;
     }
 
     return 0;
@@ -51,6 +52,7 @@ int get_ioctl(int fd)
     if (io_g < 0)
     {
         perror("Getting ioctl params: ");
+        return -1;
     }
     if (args.br == 1)
     {
@@ -101,6 +103,7 @@ int main(int argc, char *argv[])
     char *dev = argv[1];
     char *q = "quit\n";
     char *g = "get\n";
+    char *s = "set\n";
 
     int fd = open(dev, O_RDWR);
     if (fd < 0)
@@ -129,8 +132,13 @@ int main(int argc, char *argv[])
         {
             get_ioctl(fd);
         }
-        printf("Type string to send, 'quit' to quit or 'get' to get ioctl params: ");
+        if (strcmp(buf, s) == 0)
+        {
+            set_ioctl(fd);
+        }
+        printf("Type string to send, 'quit' to quit,'get' to get ioctl params or 'set' to set again: ");
     }
+
     fd = close(fd);
 
     free(buf);
