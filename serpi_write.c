@@ -14,7 +14,9 @@ int set_ioctl(int fd)
     struct ioctl_serpi args;
     args.nb = 0;
 
-    printf("Lets do some config of the serial port: \n");
+    printf("\n");
+    printf("************\tSERIAL PORT CONFIG\t************\n");
+    printf("\n");
     do
     {
         printf("Choose a bitrate:\n 1) 9600 bps \t 2)1200 bps\n");
@@ -32,6 +34,7 @@ int set_ioctl(int fd)
         printf("Choose the Parity scheme:\n 1)Stick \t 2)Even \t \n");
         scanf("%d", &args.par);
     } while (&args.par == NULL);
+    printf("\n");
 
     int io_s = ioctl(fd, SERPI_IOCSALL, &args);
     if (io_s < 0)
@@ -54,40 +57,47 @@ int get_ioctl(int fd)
         perror("Getting ioctl params: ");
         return -1;
     }
+
+    printf("\n");
+    printf("************\tSERIAL PORT PARAMETERS\t************\n");
+    printf("\n");
     if (args.br == 1)
     {
-        printf("Bitrate: 9600 bps\n");
+        printf("Bitrate:\t9600 bps\n");
     }
     else
     {
-        printf("Bitrate: 1200\n");
+        printf("Bitrate:\t1200\n");
     }
 
     if (args.wlen == 1)
     {
-        printf("Wordlenght: 8 bits\n");
+        printf("Wordlenght:\t8 bits\n");
     }
     else if (args.wlen == 2)
     {
-        printf("Wordlenght: 7 bits\n");
+        printf("Wordlenght:\t7 bits\n");
     }
     else if (args.wlen == 3)
     {
-        printf("Wordlenght: 6 bits\n");
+        printf("Wordlenght:\t6 bits\n");
     }
     else
     {
-        printf("Wordlenght: 5 bits\n");
+        printf("Wordlenght:\t5 bits\n");
     }
 
     if (args.par == 1)
     {
-        printf("Stick parity\n");
+        printf("Parity:\tStick\n");
     }
     else
     {
-        printf("Even parity\n");
+        printf("Parity:\tEven\n");
     }
+    printf("\n");
+    printf("****************************************************\n");
+    printf("\n");
 
     return 0;
 }
@@ -112,8 +122,7 @@ int main(int argc, char *argv[])
         return -1;
     }
 
-    set_ioctl(fd);
-
+    printf("Type string to send, 'quit' to quit,'get' to get ioctl params or 'set' to set again: ");
     while (fgets(buf, buffersize + 2, stdin) != NULL)
     {
         int len = strlen(buf);

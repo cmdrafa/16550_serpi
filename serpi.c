@@ -177,7 +177,7 @@ int serpi_open(struct inode *inodep, struct file *filep)
         atomic_inc(&uartdev->serpi_available);
         return -EBUSY; //already open
     }*/
-    
+
     filep->private_data = uartdev;
     ret = nonseekable_open(inodep, filep);
 
@@ -418,7 +418,8 @@ static int serpi_init(void)
         return -1;
     }
 
-    //configure_serpi_device();
+    // Use the default configurations first, user may change by ioctl()
+    configure_serpi_device();
 
     // Allocate Major Numbers
     ret = alloc_chrdev_region(&uartdev->uartdevice, 0, 1, uartdev->devname);
@@ -460,6 +461,14 @@ static int serpi_init(void)
 void configure_serpi_device()
 {
     unsigned char lcr = 0;
+
+    // Default values in the structure
+    ioctl_serpi->br = 1;   // 9600 bps
+    ioctl_serpi->wlen = 1; // Wlen 8
+    ioctl_serpi->par = 2;  // Even parity
+    ioctl_serpi->nb = 0;
+
+    // Configure it
 
     lcr = UART_IER_RDI | UART_IER_THRI; // Enable receiver interrupt and
                                         //Transmitter holding register interrupt
