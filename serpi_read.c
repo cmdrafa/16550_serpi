@@ -14,7 +14,6 @@
 int set_ioctl(int fd)
 {
     struct ioctl_serpi args;
-    args.nb = 0;
     system("clear");
     fflush(stdin);
 
@@ -37,6 +36,11 @@ int set_ioctl(int fd)
         printf("Choose the Parity scheme:\n 1)Stick \t 2)Even \t \n");
         scanf("%d", &args.par);
     } while (&args.par == NULL);
+    do
+    {
+        printf("Choose the number of Stop bits:\n 1) 1 \t 2) 2 \t \n");
+        scanf("%d", &args.nb);
+    } while (&args.nb == NULL);
 
     int io = ioctl(fd, SERPI_IOCSALL, &args);
     if (io < 0)
@@ -51,7 +55,6 @@ int set_ioctl(int fd)
 int get_ioctl(int fd)
 {
     struct ioctl_serpi args;
-    args.nb = 0;
     char option;
 
     int io_g = ioctl(fd, SERPI_IOCGALL, &args);
@@ -66,6 +69,7 @@ int get_ioctl(int fd)
         system("clear");
         fflush(stdin);
         printf("\n \t      DEVICE PARAMETERS \n");
+        printf("***************************************\n");
         if (args.br == 1)
         {
             printf("Bitrate: 9600 bps\n");
@@ -94,13 +98,22 @@ int get_ioctl(int fd)
 
         if (args.par == 1)
         {
-            printf("Stick parity\n");
+            printf("Parity: Stick\n");
         }
         else
         {
-            printf("Even parity\n");
+            printf("Parity: Even\n");
         }
-        printf("\n");
+
+        if (args.nb == 1)
+        {
+            printf("Stop bits: 1\n");
+        }
+        else
+        {
+            printf("Stop bits: 2\n");
+        }
+        printf("***************************************\n");
         printf("Type '0' to go back to the menu\n");
         option = getchar();
     }
@@ -114,6 +127,7 @@ int read_serpi(fd)
     char *q = "back\n";
     system("clear");
     fflush(stdin);
+    printf("Send the string 'back' to get back to the menu!\n");
 
     while (strcmp(buf, q) != 0)
     {
@@ -134,7 +148,6 @@ int read_serpi(fd)
         if (strcmp(buf, "") != 0)
         {
             printf("Received String: %s\n", buf);
-            //printf("Bytes read: %d \n", rc_w);
         }
     }
 
@@ -216,7 +229,6 @@ int main(int argc, char *argv[])
             get_ioctl(fd);
             break;
         case '3':
-            printf("Send the string 'back' to get back to the menu!\n");
             read_serpi(fd);
             break;
         case '4':

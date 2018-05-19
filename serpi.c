@@ -126,9 +126,27 @@ int serpi_ioctl(struct inode *inode, struct file *filep, unsigned int cmd, unsig
             lcr_par = UART_LCR_EPAR;
             break;
         }
+
+        switch (ioctl_serpi->nb)
+        {
+        case 1:
+            break;
+        case 2:
+            lcr_stop = UART_LCR_STOP;
+        default:
+            lcr_stop = UART_LCR_STOP;
+        }
         // Write the wordlenght, the parity and the stop bits
-        lcr = lcr_w | lcr_par | UART_LCR_STOP;
-        outb(lcr, BASE + UART_LCR);
+        if (lcr_stop == UART_LCR_STOP)
+        {
+            lcr = lcr_w | lcr_par | UART_LCR_STOP;
+            outb(lcr, BASE + UART_LCR);
+        }
+        else
+        {
+            lcr = lcr_w | lcr_par;
+            outb(lcr, BASE + UART_LCR);
+        }
 
         switch (ioctl_serpi->br)
         {
@@ -248,7 +266,7 @@ ssize_t serpi_read(struct file *filep, char __user *buff, size_t count, loff_t *
     if (!uartdev->data)
     {
         printk(KERN_ERR "Error allocating memory for the read operation!!\n");
-        return -1;
+        return -ENOMEM;
     }
     memset(uartdev->data, 0, sizeof(char) * (count + 1));
 
@@ -302,7 +320,7 @@ ssize_t serpi_write(struct file *filep, const char __user *buff, size_t count, l
     if (!uartdev->data)
     {
         printk(KERN_ERR "Error aloccating memory for write operation!!\n");
-        return -1;
+        return -ENOMEM;
     }
     memset(uartdev->data, 0, sizeof(char) * (count + 1));
     uartdev->cnt = count;
@@ -354,7 +372,7 @@ void write_work()
         //the write routine
         {
             outb(buf_w[i], BASE + UART_TX);
-            udelay(100); // Small delay, necessary for clearing bits from the registers
+            udelay(200); // Small delay, necessary for clearing bits from the registers
         }
     }
 
@@ -406,14 +424,20 @@ static int serpi_init(void)
     if (!uartdev)
     {
         printk(KERN_ERR "Failled allocating memory for the serpi device!\n");
-        return -1;
+        return -ENOMEM;
     }
     memset(uartdev, 0, sizeof(struct dev));
+
     uartdev->devname = "serpi";
     uartdev->irq = 4;
 
     // Allocate for the ioctl struct
     ioctl_serpi = kmalloc(sizeof(struct ioctl_serpi), GFP_KERNEL);
+    if (!ioctl_serpi)
+    {
+        printk(KERN_ERR "Failed allocating memory for the ioctl interface!\n");
+        return -ENOMEM;
+    }
     memset(ioctl_serpi, 0, sizeof(struct ioctl_serpi));
 
     // Init the spin lock, necessary for the kfifo
@@ -501,7 +525,6 @@ void configure_serpi_device()
 
     lcr &= ~UART_LCR_DLAB;      // reset DLAB
     outb(lcr, BASE + UART_LCR); // write to it
-    
 }
 
 static void serpi_exit(void)
