@@ -128,7 +128,7 @@ int read_serpi(fd)
         }
         if (strcmp(buf, "") != 0)
         {
-            printf("Received String on userspace: %s\n", buf);
+            printf("Received String: %s\n", buf);
             //printf("Bytes read: %d \n", rc_w);
         }
     }
@@ -143,7 +143,7 @@ int write_serpi(fd)
     char *buf = malloc(buffersize + 2);
     char *q = "back\n";
 
-    printf("Type string to send or 'back' to go back to the menu: ");
+    printf("Type string to send or 'back' to go back to the menu!\n");
     while (1)
     {
         fgets(buf, buffersize + 2, stdin);
@@ -156,7 +156,7 @@ int write_serpi(fd)
         }
         if (strcmp(buf, q) == 0)
         {
-            return 0;
+            break;
         }
     }
 
