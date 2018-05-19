@@ -6,10 +6,10 @@
 #include <unistd.h>
 #include <sys/ioctl.h>
 #include <stdbool.h>
+
 #include "serpi.h"
 
 #define buffersize 4096
-#define MAX_LEN 256
 
 int set_ioctl(int fd)
 {
@@ -217,8 +217,7 @@ int main(int argc, char *argv[])
         case '5':
             isRunning = false;
             printf("Goodbye\n");
-            close(fd);
-            return 0;
+            break;
         }
     }
 
