@@ -78,6 +78,7 @@ int serpi_ioctl(struct inode *inode, struct file *filep, unsigned int cmd, unsig
 
     char lcr_w, lcr_par, lcr_stop, lcr_br, lcr;
     int ret1, ret2;
+
     // Check for access to user_space args;
     if (!access_ok(VERIFY_WRITE, (void __user *)arg, _IOC_SIZE(cmd)))
     {
@@ -157,9 +158,7 @@ int serpi_ioctl(struct inode *inode, struct file *filep, unsigned int cmd, unsig
         break;
 
     default:
-        // case invalid commands use the default values
-
-        //configure_serpi_device();
+        // Default error for this case
         return -ENOTTY;
     }
 
@@ -237,6 +236,8 @@ ssize_t serpi_read(struct file *filep, char __user *buff, size_t count, loff_t *
     int ret;
 
     struct dev *uartdev = filep->private_data;
+
+    // If semaphore fails
     if (down_interruptible(&uartdev->sem))
     {
         return -ERESTARTSYS;
@@ -265,8 +266,16 @@ ssize_t serpi_read(struct file *filep, char __user *buff, size_t count, loff_t *
     uncp = copy_to_user(buff, uartdev->data, count);
     kfree(uartdev->data);
 
-    up(&uartdev->sem);
-    return cp;
+    if (uncp == 0)
+    {
+        up(&uartdev->sem);
+        return cp;
+    }
+    else
+    {
+        up(&uartdev->sem);
+        return -EFAULT;
+    }
 }
 
 ssize_t serpi_write(struct file *filep, const char __user *buff, size_t count, loff_t *offp)
@@ -282,6 +291,7 @@ ssize_t serpi_write(struct file *filep, const char __user *buff, size_t count, l
     b_data = 0;
     i = 0;
 
+    // If semaphore fails
     if (down_interruptible(&uartdev->sem))
     {
         return -ERESTARTSYS;
@@ -308,9 +318,15 @@ ssize_t serpi_write(struct file *filep, const char __user *buff, size_t count, l
     outb((uartdev->data[0]), BASE + UART_TX); // Gotta write the first char here
 
     kfree(uartdev->data);
-
-    up(&uartdev->sem);
-    return count;
+    if (uncp == 0)
+    {
+        up(&uartdev->sem);
+        return count;
+    }
+    else
+    {
+        return -EFAULT;
+    }
 }
 
 struct file_operations uart_fops = {
@@ -440,6 +456,7 @@ static int serpi_init(void)
     if (reg < 0)
     {
         printk(KERN_ERR "Error in cdev_add\n");
+        return reg;
     }
 
     // Request IRQ line
@@ -484,6 +501,7 @@ void configure_serpi_device()
 
     lcr &= ~UART_LCR_DLAB;      // reset DLAB
     outb(lcr, BASE + UART_LCR); // write to it
+    
 }
 
 static void serpi_exit(void)

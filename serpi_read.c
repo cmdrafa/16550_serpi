@@ -15,6 +15,9 @@ int set_ioctl(int fd)
 {
     struct ioctl_serpi args;
     args.nb = 0;
+    system("clear");
+    fflush(stdin);
+
     printf("Lets do some config of the serial port: \n");
 
     do
@@ -109,6 +112,8 @@ int read_serpi(fd)
 {
     char *buf = malloc(buffersize + 2);
     char *q = "back\n";
+    system("clear");
+    fflush(stdin);
 
     while (strcmp(buf, q) != 0)
     {
@@ -142,6 +147,8 @@ int write_serpi(fd)
 {
     char *buf = malloc(buffersize + 2);
     char *q = "back\n";
+    system("clear");
+    fflush(stdin);
 
     printf("Type string to send or 'back' to go back to the menu!\n");
     while (1)
@@ -190,6 +197,7 @@ int main(int argc, char *argv[])
         fflush(stdin);
         puts("\n \t      COMMUNICATION WITH A UART DEVICE"
              "\n \t            FEUP - SO-2017/2018"
+             "\n \t            SERPI DEVICE DRIVER"
              "\n***************************************************************"
              "\n[1]Configure the communcation parameters for the device (ioctl)"
              "\n[2]Get current configuration for the device (ioctl)"
