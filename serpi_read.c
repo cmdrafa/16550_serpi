@@ -127,27 +127,23 @@ int read_serpi(fd)
     char *q = "back\n";
     system("clear");
     fflush(stdin);
-    printf("Send the string 'back' to get back to the menu!\n");
 
-    while (strcmp(buf, q) != 0)
+    printf("Send the string 'back' to get back to the menu!\n");
+    while (1)
     {
         int rc_w = read(fd, buf, buffersize);
         if (rc_w < 0)
         {
             perror("Reading FD: ");
-            printf("%d\n", rc_w);
-            printf("errno = %d (expecting EAGAIN = %d)\n", errno, EAGAIN);
-            if (errno == EAGAIN)
-            {
-                buf[0] = 0;
-                continue;
-            }
-            else
-                return -1;
+            return -1;
         }
         if (strcmp(buf, "") != 0)
         {
             printf("Received String: %s\n", buf);
+        }
+        if (strcmp(buf, q) == 0)
+        {
+            break;
         }
     }
 
