@@ -5,9 +5,11 @@
 #include <string.h>
 #include <unistd.h>
 #include <sys/ioctl.h>
+#include <stdbool.h>
 #include "serpi.h"
 
 #define buffersize 4096
+#define MAX_LEN 256
 
 int set_ioctl(int fd)
 {
@@ -47,6 +49,7 @@ int get_ioctl(int fd)
 {
     struct ioctl_serpi args;
     args.nb = 0;
+    char option;
 
     int io_g = ioctl(fd, SERPI_IOCGALL, &args);
     if (io_g < 0)
@@ -54,67 +57,59 @@ int get_ioctl(int fd)
         perror("Getting ioctl params: ");
         return -1;
     }
-    if (args.br == 1)
-    {
-        printf("Bitrate: 9600 bps\n");
-    }
-    else
-    {
-        printf("Bitrate: 1200\n");
-    }
 
-    if (args.wlen == 1)
+    while (option != '0')
     {
-        printf("Wordlenght: 8 bits\n");
-    }
-    else if (args.wlen == 2)
-    {
-        printf("Wordlenght: 7 bits\n");
-    }
-    else if (args.wlen == 3)
-    {
-        printf("Wordlenght: 6 bits\n");
-    }
-    else
-    {
-        printf("Wordlenght: 5 bits\n");
-    }
+        system("clear");
+        fflush(stdin);
+        printf("\n \t      DEVICE PARAMETERS \n");
+        if (args.br == 1)
+        {
+            printf("Bitrate: 9600 bps\n");
+        }
+        else
+        {
+            printf("Bitrate: 1200\n");
+        }
 
-    if (args.par == 1)
-    {
-        printf("Stick parity\n");
-    }
-    else
-    {
-        printf("Even parity\n");
+        if (args.wlen == 1)
+        {
+            printf("Wordlenght: 8 bits\n");
+        }
+        else if (args.wlen == 2)
+        {
+            printf("Wordlenght: 7 bits\n");
+        }
+        else if (args.wlen == 3)
+        {
+            printf("Wordlenght: 6 bits\n");
+        }
+        else
+        {
+            printf("Wordlenght: 5 bits\n");
+        }
+
+        if (args.par == 1)
+        {
+            printf("Stick parity\n");
+        }
+        else
+        {
+            printf("Even parity\n");
+        }
+        printf("\n");
+        printf("Type '0' to go back to the menu\n");
+        option = getchar();
     }
 
     return 0;
 }
 
-int main(int argc, char *argv[])
+int read_serpi(fd)
 {
-    if (argc < 2)
-    {
-        printf("You must pass the device address as the first argument\n");
-        return -1;
-    }
     char *buf = malloc(buffersize + 2);
-    char *dev = argv[1];
-    char *q = "quit\n";
-    char *g = "get\n";
-    char *s = "set\n";
+    char *q = "back\n";
 
-    int fd = open(dev, O_RDWR);
-    if (fd < 0)
-    {
-        perror("Opening device: ");
-        return -1;
-    }
-
-    set_ioctl(fd);
-
-    printf("Receiving data from ser. port.\nType 'quit' to quit, 'get' to get the ser params, or 'set' to set it again\n");
     while (strcmp(buf, q) != 0)
     {
         int rc_w = read(fd, buf, buffersize);
@@ -136,19 +131,98 @@ int main(int argc, char *argv[])
             printf("Received String on userspace: %s\n", buf);
             //printf("Bytes read: %d \n", rc_w);
         }
-        if (strcmp(buf, g) == 0)
+    }
+
+    free(buf);
+
+    return 0;
+}
+
+int write_serpi(fd)
+{
+    char *buf = malloc(buffersize + 2);
+    char *q = "back\n";
+
+    printf("Type string to send or 'back' to go back to the menu: ");
+    while (1)
+    {
+        fgets(buf, buffersize + 2, stdin);
+        int len = strlen(buf);
+        int rc_w = write(fd, buf, len);
+        if (rc_w < 0)
         {
-            get_ioctl(fd);
+            perror("error writing to the device: ");
+            return -1;
         }
-        if (strcmp(buf, s) == 0)
+        if (strcmp(buf, q) == 0)
         {
-            set_ioctl(fd);
+            return 0;
         }
     }
 
-    fd = close(fd);
-
     free(buf);
+
+    return 0;
+}
+
+int main(int argc, char *argv[])
+{
+    if (argc < 2)
+    {
+        printf("Error!!\nYou must pass the device address as the second argument\n");
+        return -1;
+    }
+
+    char *dev = argv[1];
+    char option;
+    bool isRunning = true;
+
+    int fd = open(dev, O_RDWR);
+    if (fd < 0)
+    {
+        perror("Opening device: ");
+        return -1;
+    }
+
+    while (isRunning == true)
+    {
+        system("clear");
+        fflush(stdin);
+        puts("\n \t      COMMUNICATION WITH A UART DEVICE"
+             "\n \t            FEUP - SO-2017/2018"
+             "\n***************************************************************"
+             "\n[1]Configure the communcation parameters for the device (ioctl)"
+             "\n[2]Get current configuration for the device (ioctl)"
+             "\n[3]Read from the serial port"
+             "\n[4]Write to the serial port"
+             "\n[5]Exit"
+             "\n***************************************************************");
+        option = getchar();
+
+        switch (option)
+        {
+        case '1':
+            set_ioctl(fd);
+            break;
+        case '2':
+            get_ioctl(fd);
+            break;
+        case '3':
+            printf("Send the string 'back' to get back to the menu!\n");
+            read_serpi(fd);
+            break;
+        case '4':
+            write_serpi(fd);
+            break;
+        case '5':
+            isRunning = false;
+            printf("Goodbye\n");
+            close(fd);
+            return 0;
+        }
+    }
+
+    close(fd);
 
     return 0;
 }
