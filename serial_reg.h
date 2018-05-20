@@ -107,6 +107,11 @@
 
 #define UART_DIV_1200   96	/* Divisor for 1200 bps */
 #define UART_DIV_9600   12	/* Divisor for 9600 bps */
+#define UART_DIV_19200  6 /* Divisor for 19200 bps */
+#define UART_DIV_28800 4 /* Divisor for 28800 bps */
+#define UART_DIV_38400 3 /* Divisor for 38400 bps */
+#define UART_DIV_57600 2 /*Divisor for 57600 bps */
+#define UART_DIV_115200 1 /*Divisor for 115200 bps */
 
 #endif /* _SERIAL_REG_H */
 

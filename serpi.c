@@ -151,10 +151,25 @@ int serpi_ioctl(struct inode *inode, struct file *filep, unsigned int cmd, unsig
         switch (ioctl_serpi->br)
         {
         case 1:
-            lcr_br = UART_DIV_9600;
+            lcr_br = UART_DIV_1200;
             break;
         case 2:
-            lcr_br = UART_DIV_1200;
+            lcr_br = UART_DIV_9600;
+            break;
+        case 3:
+            lcr_br = UART_DIV_19200;
+            break;
+        case 4:
+            lcr_br = UART_DIV_28800;
+            break;
+        case 5:
+            lcr_br = UART_DIV_38400;
+            break;
+        case 6:
+            lcr_br = UART_DIV_57600;
+            break;
+        case 7:
+            lcr_br = UART_DIV_115200;
             break;
         default:
             lcr_br = UART_DIV_1200;
@@ -343,6 +358,7 @@ ssize_t serpi_write(struct file *filep, const char __user *buff, size_t count, l
     }
     else
     {
+        up(&uartdev->sem);
         return -EFAULT;
     }
 }
@@ -507,7 +523,7 @@ void configure_serpi_device()
     ioctl_serpi->br = 1;   // 9600 bps
     ioctl_serpi->wlen = 1; // Wlen 8
     ioctl_serpi->par = 2;  // Even parity
-    ioctl_serpi->nb = 0;
+    ioctl_serpi->nb = 2;   // Two stop bits
 
     // Configure it
 
