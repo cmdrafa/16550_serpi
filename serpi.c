@@ -112,7 +112,7 @@ int serpi_ioctl(struct inode *inode, struct file *filep, unsigned int cmd, unsig
             lcr = UART_FCR_ENABLE_FIFO | UART_FCR_TRIGGER_14;
             outb(lcr, BASE + UART_FCR);
             break;
-        default: // Disabled FIFO by default
+        default: // Disabled FIFO case user sent wrong parameter
             ioctl_serpi->fifo = 1;
             break;
         }
