@@ -11,6 +11,7 @@ struct ioctl_serpi {
     int wlen; // Word-lenght
     int par; // Parity
     int nb; // Stop bits
+    int fifo; // Fifo Select
 };
 
 #define SERPI_IOC_MAGIC 0x66

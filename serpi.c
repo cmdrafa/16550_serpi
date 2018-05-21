@@ -92,9 +92,30 @@ int serpi_ioctl(struct inode *inode, struct file *filep, unsigned int cmd, unsig
 
         ret1 = copy_from_user(ioctl_serpi, (struct ioctl_serpi *)arg, sizeof(struct ioctl_serpi));
 
-        lcr = UART_IER_RDI | UART_IER_THRI; // Enable receiver interrupt and
-                                            //Transmitter holding register interrupt
-        outb(lcr, BASE + UART_IER);
+        switch (ioctl_serpi->fifo)
+        {
+        case 1: // Disabled FIFO
+            break;
+        case 2:
+            lcr = UART_FCR_ENABLE_FIFO | UART_FCR_TRIGGER_1;
+            outb(lcr, BASE + UART_FCR);
+            break;
+        case 3:
+            lcr = UART_FCR_ENABLE_FIFO | UART_FCR_TRIGGER_4;
+            outb(lcr, BASE + UART_FCR);
+            break;
+        case 4:
+            lcr = UART_FCR_ENABLE_FIFO | UART_FCR_TRIGGER_8;
+            outb(lcr, BASE + UART_FCR);
+            break;
+        case 5:
+            lcr = UART_FCR_ENABLE_FIFO | UART_FCR_TRIGGER_14;
+            outb(lcr, BASE + UART_FCR);
+            break;
+        default: // Disabled FIFO by default
+            ioctl_serpi->fifo = 1;
+            break;
+        }
 
         switch (ioctl_serpi->wlen)
         {
@@ -142,11 +163,19 @@ int serpi_ioctl(struct inode *inode, struct file *filep, unsigned int cmd, unsig
         // Write the wordlenght, the parity and the stop bits
         if (lcr_stop == UART_LCR_STOP)
         {
+            lcr = UART_IER_RDI | UART_IER_THRI; // Enable receiver interrupt and
+                                                //Transmitter holding register interrupt
+            outb(lcr, BASE + UART_IER);
+
             lcr = lcr_w | lcr_par | UART_LCR_STOP;
             outb(lcr, BASE + UART_LCR);
         }
         else
         {
+            lcr = UART_IER_RDI | UART_IER_THRI; // Enable receiver interrupt and
+                                                //Transmitter holding register interrupt
+            outb(lcr, BASE + UART_IER);
+
             lcr = lcr_w | lcr_par;
             outb(lcr, BASE + UART_LCR);
         }
@@ -524,12 +553,14 @@ void configure_serpi_device()
     unsigned char lcr = 0;
 
     // Default values in the structure
-    ioctl_serpi->br = 1;   // 9600 bps
+    ioctl_serpi->br = 1;   // 1200 bps
     ioctl_serpi->wlen = 1; // Wlen 8
     ioctl_serpi->par = 2;  // Even parity
     ioctl_serpi->nb = 2;   // Two stop bits
+    ioctl_serpi->fifo = 1; // No FIFO
 
     // Configure it
+    lcr = 0;
 
     lcr = UART_IER_RDI | UART_IER_THRI; // Enable receiver interrupt and
                                         //Transmitter holding register interrupt

@@ -21,6 +21,12 @@ int set_ioctl(int fd)
 
     do
     {
+        printf("Enable Fifo:\n 1)No 2)1 byte Fifo 3)4 bytes Fifo 4)8 bytes Fifo 5)14 bytes Fifo\n");
+        scanf("%d", &args.fifo);
+    } while (&args.fifo == NULL);
+
+    do
+    {
         printf("Choose a bitrate:\n1)1200bps 2)9600bps 3)19200bps 4)28800bps 5)38400bps 6)57600bps 7)115200bps\n");
         scanf("%d", &args.br);
     } while (&args.br == NULL);
@@ -69,8 +75,30 @@ int get_ioctl(int fd)
     {
         system("clear");
         fflush(stdin);
+
         printf("\n \t      DEVICE PARAMETERS \n");
         printf("***************************************\n");
+        if (args.fifo == 1)
+        {
+            printf("No fifo enabled\n");
+        }
+        else if (args.fifo == 2)
+        {
+            printf("Fifo: 1 byte\n");
+        }
+        else if (args.fifo == 3)
+        {
+            printf("Fifo: 4 bytes\n");
+        }
+        else if (args.fifo == 4)
+        {
+            printf("Fifo: 8 bytes\n");
+        }
+        else
+        {
+            printf("Fifo: 14 bytes\n");
+        }
+
         if (args.br == 1)
         {
             printf("Bitrate: 1200 bps\n");
@@ -146,10 +174,11 @@ int read_serpi(fd)
 {
     char *buf = malloc(buffersize + 2);
     char *q = "back\n";
+    char *q_2 = "0";
     system("clear");
     fflush(stdin);
 
-    printf("Send the string 'back' to get back to the menu!\n");
+    printf("Send the string 'back' or '0' to get back to the menu!\n");
     while (1)
     {
         int rc_w = read(fd, buf, buffersize);
@@ -162,7 +191,7 @@ int read_serpi(fd)
         {
             printf("Received String: %s\n", buf);
         }
-        if (strcmp(buf, q) == 0)
+        if (strcmp(buf, q) == 0 || strcmp(buf, q_2) == 0)
         {
             break;
         }
@@ -177,10 +206,11 @@ int write_serpi(fd)
 {
     char *buf = malloc(buffersize + 2);
     char *q = "back\n";
+    char *q_2 = "0\n";
     system("clear");
     fflush(stdin);
 
-    printf("Type string to send or 'back' to go back to the menu!\n");
+    printf("Type string to send or 'back' or '0' to go back to the menu!\n");
     while (1)
     {
         fgets(buf, buffersize + 2, stdin);
@@ -191,7 +221,7 @@ int write_serpi(fd)
             perror("error writing to the device: ");
             return -1;
         }
-        if (strcmp(buf, q) == 0)
+        if (strcmp(buf, q) == 0 || strcmp(buf, q_2) == 0)
         {
             break;
         }
