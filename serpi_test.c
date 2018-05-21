@@ -21,7 +21,7 @@ int set_ioctl(int fd)
 
     do
     {
-        printf("Choose a bitrate:\n1)1200bps 1)9600bps 3)19200bps 4)28800bps 5)38400bps 6)57600bps 7)115200bps\n");
+        printf("Choose a bitrate:\n1)1200bps 2)9600bps 3)19200bps 4)28800bps 5)38400bps 6)57600bps 7)115200bps\n");
         scanf("%d", &args.br);
     } while (&args.br == NULL);
 
@@ -81,23 +81,23 @@ int get_ioctl(int fd)
         }
         else if (args.br == 3)
         {
-            printf("Bitrate: 19200\n");
+            printf("Bitrate: 19200 bps\n");
         }
         else if (args.br == 4)
         {
-            printf("Bitrate: 28800\n");
+            printf("Bitrate: 28800 bps\n");
         }
         else if (args.br == 5)
         {
-            printf("Bitrate: 38400\n");
+            printf("Bitrate: 38400 bps\n");
         }
         else if (args.br == 6)
         {
-            printf("Bitrate: 57600\n");
+            printf("Bitrate: 57600 bps\n");
         }
         else
         {
-            printf("Bitrate: 115200\n");
+            printf("Bitrate: 115200 bps\n");
         }
 
         if (args.wlen == 1)

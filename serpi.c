@@ -112,6 +112,7 @@ int serpi_ioctl(struct inode *inode, struct file *filep, unsigned int cmd, unsig
             break;
         default:
             lcr_w = UART_LCR_WLEN8;
+            ioctl_serpi->wlen = 1;
         }
 
         switch (ioctl_serpi->par)
@@ -124,6 +125,7 @@ int serpi_ioctl(struct inode *inode, struct file *filep, unsigned int cmd, unsig
             break;
         default:
             lcr_par = UART_LCR_EPAR;
+            ioctl_serpi->par = 2;
             break;
         }
 
@@ -135,6 +137,7 @@ int serpi_ioctl(struct inode *inode, struct file *filep, unsigned int cmd, unsig
             lcr_stop = UART_LCR_STOP;
         default:
             lcr_stop = UART_LCR_STOP;
+            ioctl_serpi->nb = 2;
         }
         // Write the wordlenght, the parity and the stop bits
         if (lcr_stop == UART_LCR_STOP)
@@ -173,6 +176,7 @@ int serpi_ioctl(struct inode *inode, struct file *filep, unsigned int cmd, unsig
             break;
         default:
             lcr_br = UART_DIV_1200;
+            ioctl_serpi->br = 1;
             break;
         }
         // Write the bit_rate to the serial_port, maybe a routine just for that ?
